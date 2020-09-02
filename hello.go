@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	Lexical "./elements"
 )
@@ -20,22 +19,21 @@ var actualToken Lexical.Token //actual token that is being analyzed
 var controlIndex int          //the index of the actual token
 
 type partition struct {
-	Status bool
+	Name   [20]byte
 	Type   [1]byte
 	Fit    [1]byte
-	Start  int
-	Name   [16]byte
+	Status [1]byte
+	Start  uint8
 }
 
 type mbr struct {
-	Size          int
-	Name          [10]byte
-	CreationDate  [19]byte
-	DiskSignature int
+	Partition0    partition
 	Partition1    partition
 	Partition2    partition
 	Partition3    partition
-	Partition4    partition
+	Name          [10]byte
+	CreationDate  [19]byte
+	DiskSignature uint8
 }
 
 func main() {
@@ -46,17 +44,15 @@ func main() {
 	for command != "fin" {
 		fmt.Print("Ingresa un comando:\n")
 		scanner.Scan()
-		command = "mkdisk -size->1 -path->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/pruebas\" -name->Disco1.dsk -unit->m" //scanner.Text()
+		command = "mkdisk -size->50 -path->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/pruebas\" -name->DiscoKev.dsk -unit->m" //scanner.Text()
 		tokens = Lexical.Analyze(command)
 		//is necessary to check if the tokens correspond to a command
 		checkCommands()
 		break
 	}
-	//writeFile("\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/pruebas\"")
 }
 
 //to check commands
-
 func checkCommands() {
 	fmt.Println("start checking commands...")
 	controlIndex = 0
@@ -87,14 +83,14 @@ func nextToken() {
 //command exec
 //exec -path->/valid/file.mia
 func exec() {
-	var path string
+	//var path string
 	//exec was detected. the next token should be "-"
 	if compareActualToken(Lexical.SMinus) {
 		nextToken()
 		//next token should be path since exec just has one param
 		if compareActualToken(Lexical.Path) {
 			nextToken()
-			path := rPath()
+			//path := rPath()
 		}
 	}
 }
@@ -153,7 +149,6 @@ func writeFile(path string, fileName string, size int, unit string) {
 	fmt.Println("File created succesfully xd")
 	var otro int8 = 0
 	s := &otro
-	fmt.Println(unsafe.Sizeof(otro))
 	//Primer binario para iniciar escribiendo el 0 como inicio del archivo.
 	var binario bytes.Buffer
 	binary.Write(&binario, binary.BigEndian, s)
@@ -167,41 +162,29 @@ func writeFile(path string, fileName string, size int, unit string) {
 	//Se escribe el struct en el inicio del archivo
 	file.Seek(0, 0)
 	// partitions initialization
-	var part1, part2, part3, part4 partition
-	part1 = newPartition(false, "x", "X", 0, 10, "new_part1")
-	part2 = newPartition(false, "x", "X", 0, 10, "new_part2")
-	part3 = newPartition(false, "x", "X", 0, 10, "new_part3")
-	part4 = newPartition(false, "x", "X", 0, 10, "new_part4")
-	// disk init
-	newMbr := mbr{
-		Size:          size,
-		DiskSignature: 15,
-		Partition1:    part1,
-		Partition2:    part2,
-		Partition3:    part3,
-		Partition4:    part4,
+	var partitions [4]partition
+	for i := 0; i < 4; i++ {
+		copy(partitions[i].Name[:], "new_part")
+		copy(partitions[i].Status[:], "F")
+		copy(partitions[i].Fit[:], "x")
+		copy(partitions[i].Type[:], "x")
+		partitions[i].Start = 97
 	}
-	mbr_name := "que pedo"
-	date := time.Now().String()[0:19]
-	copy(newMbr.Name[:], mbr_name)
-	copy(newMbr.CreationDate[:], date)
+	// disk init
+	newMbr := mbr{}
+	newMbr.Partition0 = partitions[0]
+	newMbr.Partition1 = partitions[1]
+	newMbr.Partition2 = partitions[2]
+	newMbr.Partition3 = partitions[3]
+	newMbr.DiskSignature = 15
+	copy(newMbr.Name[:], "Eete Sech")
+	copy(newMbr.CreationDate[:], time.Now().String()[0:19])
 	s1 := &newMbr
 	//binario para escribir en el archivo creado con el tamanio y con el struct definido
 	var binario3 bytes.Buffer
 	binary.Write(&binario3, binary.BigEndian, s1)
 	escribirBytes(file, binario3.Bytes())
 	fmt.Println("Abr")
-}
-
-func newPartition(status bool, type_ string, fit string, start int, size int, name string) partition {
-	part := partition{
-		Status: status,
-		Start:  start,
-	}
-	copy(part.Fit[:], fit)
-	copy(part.Name[:], name)
-	copy(part.Type[:], type_)
-	return part
 }
 
 func escribirBytes(file *os.File, bytes []byte) {
