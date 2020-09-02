@@ -1,4 +1,4 @@
-package analyzer
+package elements
 
 import (
 	"fmt"
@@ -9,9 +9,10 @@ import (
 //TokenType is a string that represents an specifc pattern for a lexeme
 type TokenType string
 
-/*Tokens used for lexical analysis*/
+//Tokens used for lexical analysis
 const (
 	ID           TokenType = "id"
+	FileName     TokenType = "file_name"
 	Number       TokenType = "number"
 	String       TokenType = "string"
 	Path         TokenType = "path"
@@ -21,7 +22,12 @@ const (
 	SArrow       TokenType = "arrow"
 	RExec        TokenType = "reserved_exec"
 	RPath        TokenType = "reserved_path"
+	RSize        TokenType = "reserved_size"
+	RName        TokenType = "reserved_name"
+	RUnit        TokenType = "reserved_unit"
+	RMkdisk      TokenType = "reserved_mkdisk"
 	LexError     TokenType = "lex_error"
+	EndToken     TokenType = "end_token"
 )
 
 //Token struct used to save the token information (type and value)
@@ -37,6 +43,7 @@ var tokenList []Token
 
 //Analyze does a lexical analysis returning the identified tokens from a string
 func Analyze(command string) []Token {
+	command = command + "#"
 	state = 0
 	for i := 0; i < len(command); i++ {
 		c := string(command[i]) //c is the character at index "i" from the original command
@@ -51,14 +58,24 @@ func Analyze(command string) []Token {
 			} else if getBoolMatch("\"", c) { // for strings
 				state = 3
 				auxlex += c
-			} else if getBoolMatch("/", c) { // multi-lines and path
+			} else if getBoolMatch("[\\\\]", c) { // multi-lines
 				state = 4
+				auxlex += c
+			} else if getBoolMatch("/", c) { // and path
+				state = 7
 				auxlex += c
 			} else if getBoolMatch("\n", c) { // new line
 				state = 8
 				auxlex += c
+			} else if getBoolMatch("[\\d]", c) {
+				state = 9
+				auxlex += c
 			} else {
-				if !getBoolMatch("\\s", c) {
+				if getBoolMatch("#", c) && i == len(command)-1 {
+					fmt.Println("Analisis terminado")
+					auxlex += "\n"
+					addToken(NewLine)
+				} else if !getBoolMatch("\\s", c) {
 					fmt.Println("Error en la entrada, el caracter: \"" + c + "\" no es válido")
 					auxlex += c
 					addToken(LexError)
@@ -69,11 +86,23 @@ func Analyze(command string) []Token {
 		case 1:
 			if getBoolMatch("[[:word:]]", c) {
 				auxlex += c
+			} else if getBoolMatch("[.]", c) {
+				state = 10
+				auxlex += c
 			} else {
-				if auxlex == "exec" {
+
+				if strings.ToLower(auxlex) == "exec" {
 					addToken(RExec)
-				} else if auxlex == "path" {
+				} else if strings.ToLower(auxlex) == "path" {
 					addToken(RPath)
+				} else if strings.ToLower(auxlex) == "size" {
+					addToken(RSize)
+				} else if strings.ToLower(auxlex) == "name" {
+					addToken(RName)
+				} else if strings.ToLower(auxlex) == "unit" {
+					addToken(RUnit)
+				} else if strings.ToLower(auxlex) == "mkdisk" {
+					addToken(RMkdisk)
 				} else {
 					addToken(ID)
 				}
@@ -102,35 +131,38 @@ func Analyze(command string) []Token {
 				addToken(LexError)
 			}
 			break
-		// "/" was received
+		// "\" was received
 		case 4:
-			if getBoolMatch("*", c) {
+			if getBoolMatch("[*]", c) {
 				auxlex += c
 				state = 6
-			} else if getBoolMatch("[[:word:]]", c) {
-				auxlex += c
-				state = 7
+			} else {
+				addToken(LexError)
+				i--
 			}
 			break
 		// string validation
 		case 5:
-			if strings.Index(auxlex, "\"") == 0 && strings.LastIndex(auxlex, "\"") == len(command)-1 {
+			if strings.Index(auxlex, "\"") == 0 && strings.LastIndex(auxlex, "\"") == len(auxlex)-1 {
 				addToken(String)
 			} else {
 				addToken(LexError)
 			}
 			i--
 			break
-		// "/*" was received
+		// "\*" was received
 		case 6:
 			if getBoolMatch("\n", c) {
 				auxlex += c
 				addToken(ContinueLine)
+			} else if !getBoolMatch("\\s", c) { //if it's a whitespace skips it, if not it's a lexical error
+				addToken(LexError)
+				i--
 			}
 			break
-		// "/any_letter" was received (potential path)
+		// "/" was received (potential path)
 		case 7:
-			if getBoolMatch("[[:word:]/]", c) {
+			if getBoolMatch("[[:word:]/.]", c) {
 				auxlex += c
 			} else {
 				addToken(Path)
@@ -144,8 +176,26 @@ func Analyze(command string) []Token {
 				i--
 			}
 			break
+		case 9:
+			if getBoolMatch("[\\d]", c) {
+				auxlex += c
+			} else {
+				addToken(Number)
+				i--
+			}
+			break
+		// "word." was received
+		case 10:
+			if getBoolMatch("[[:word:]]", c) {
+				auxlex += c
+			} else {
+				addToken(FileName)
+				i--
+			}
+			break
 		}
 	}
+	printTokens()
 	return tokenList
 }
 
@@ -165,4 +215,15 @@ func getBoolMatch(reg string, compared string) bool {
 		return false
 	}
 	return boolean
+}
+
+func printTokens() {
+	fmt.Println("|TokenType|Value|")
+	for i := 0; i < len(tokenList); i++ {
+		fmt.Print("|")
+		fmt.Print(tokenList[i].Type)
+		fmt.Print("|")
+		fmt.Print(tokenList[i].Value)
+		fmt.Println("|")
+	}
 }
