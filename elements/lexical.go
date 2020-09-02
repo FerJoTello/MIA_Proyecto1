@@ -195,7 +195,7 @@ func Analyze(command string) []Token {
 			break
 		}
 	}
-	printTokens()
+	//printTokens()
 	return tokenList
 }
 

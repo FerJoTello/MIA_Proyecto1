@@ -20,31 +20,25 @@ var controlIndex int          //the index of the actual token
 
 type partition struct {
 	Name   [20]byte
-	Type   [1]byte
-	Fit    [1]byte
-	Status [1]byte
-	Start  uint8
+	Type   byte
+	Fit    byte
+	Status byte
+	Start  uint64
 }
 
 type mbr struct {
-	Partition0    partition
-	Partition1    partition
-	Partition2    partition
-	Partition3    partition
-	Name          [10]byte
-	CreationDate  [19]byte
-	DiskSignature uint8
+	CreationDate  [20]byte
+	DiskSignature uint64
+	Partitions    [4]partition
 }
 
 func main() {
-
 	scanner := bufio.NewScanner(os.Stdin)
 	var command string
-
 	for command != "fin" {
 		fmt.Print("Ingresa un comando:\n")
 		scanner.Scan()
-		command = "mkdisk -size->50 -path->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/pruebas\" -name->DiscoKev.dsk -unit->m" //scanner.Text()
+		command = "MkDiSk -siZe->4 -pAth->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/pruebas\" -name->DiskSez.dsk -uniT->k" //scanner.Text()
 		tokens = Lexical.Analyze(command)
 		//is necessary to check if the tokens correspond to a command
 		checkCommands()
@@ -123,21 +117,36 @@ func mkdisk() {
 	}
 	//once the parameters are defined the disk can be created
 	if size >= 0 && path != "" && name != "" {
-		fmt.Println("Size:", size)
-		fmt.Println("Path:", path)
-		fmt.Println("Name:", name)
-		if unit == "" {
-			unit = "m"
+		var sizeOnBytes int64
+		if unit != "k" {
+			//units on megabytes (1024*1024)
+			sizeOnBytes = 1024 * 1024 * int64(size)
+		} else {
+			//units on kylobytes (1024)
+			sizeOnBytes = 1024 * int64(size)
 		}
-		fmt.Println("Unit:", unit)
-		writeFile(path, name, size, unit)
+		// partitions initialization
+		var partitions [4]partition
+		for i := 0; i < 4; i++ {
+			copy(partitions[i].Name[:], "new_part")
+			partitions[i].Status = 'F'
+			partitions[i].Fit = 'x'
+			partitions[i].Type = 'x'
+			partitions[i].Start = 97
+		}
+		// disk init
+		newMbr := mbr{}
+		newMbr.Partitions = partitions
+		newMbr.DiskSignature = uint64(time.Now().Unix())
+		copy(newMbr.CreationDate[:], time.Now().String()[0:19])
+		writeMbr(path, name, sizeOnBytes, newMbr)
 	} else {
 		fmt.Println("No es posible ejecutar el comando \"mkdisk\". Parametros no definidos")
 	}
 
 }
 
-func writeFile(path string, fileName string, size int, unit string) {
+func writeMbr(path string, fileName string, sizeOnBytes int64, newMbr mbr) {
 	createFolders(path)
 	//the file is created with the provided name and path
 	file, err := os.Create(path + "/" + fileName)
@@ -146,45 +155,26 @@ func writeFile(path string, fileName string, size int, unit string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("File created succesfully xd")
-	var otro int8 = 0
-	s := &otro
+	var cero int8 = 0
+	s := &cero
 	//Primer binario para iniciar escribiendo el 0 como inicio del archivo.
 	var binario bytes.Buffer
 	binary.Write(&binario, binary.BigEndian, s)
 	escribirBytes(file, binario.Bytes())
-	//Nos posicionamos en el byte 1023 (primera posicion es 0)
-	file.Seek(1023, 0) // segundo parametro: 0, 1, 2.     0 -> Inicio, 1-> desde donde esta el puntero, 2 -> Del fin para atras
+	//Posicionar en la ultima posicion-1 para cumplir con el tamano. Se escribe un 0
+	file.Seek(sizeOnBytes-1, 0) // segundo parametro: 0, 1, 2.     0 -> Inicio, 1-> desde donde esta el puntero, 2 -> Del fin para atras
 	//Segundo Binario para definir el tamanio del archivo
 	var binario2 bytes.Buffer
 	binary.Write(&binario2, binary.BigEndian, s)
 	escribirBytes(file, binario2.Bytes())
 	//Se escribe el struct en el inicio del archivo
 	file.Seek(0, 0)
-	// partitions initialization
-	var partitions [4]partition
-	for i := 0; i < 4; i++ {
-		copy(partitions[i].Name[:], "new_part")
-		copy(partitions[i].Status[:], "F")
-		copy(partitions[i].Fit[:], "x")
-		copy(partitions[i].Type[:], "x")
-		partitions[i].Start = 97
-	}
-	// disk init
-	newMbr := mbr{}
-	newMbr.Partition0 = partitions[0]
-	newMbr.Partition1 = partitions[1]
-	newMbr.Partition2 = partitions[2]
-	newMbr.Partition3 = partitions[3]
-	newMbr.DiskSignature = 15
-	copy(newMbr.Name[:], "Eete Sech")
-	copy(newMbr.CreationDate[:], time.Now().String()[0:19])
 	s1 := &newMbr
 	//binario para escribir en el archivo creado con el tamanio y con el struct definido
 	var binario3 bytes.Buffer
 	binary.Write(&binario3, binary.BigEndian, s1)
 	escribirBytes(file, binario3.Bytes())
-	fmt.Println("Abr")
+	fmt.Println("File created succesfully xd")
 }
 
 func escribirBytes(file *os.File, bytes []byte) {
