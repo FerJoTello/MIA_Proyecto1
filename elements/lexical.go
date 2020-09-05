@@ -20,12 +20,18 @@ const (
 	NewLine      TokenType = "new_line"
 	SMinus       TokenType = "minus"
 	SArrow       TokenType = "arrow"
-	RExec        TokenType = "reserved_exec"
-	RPath        TokenType = "reserved_path"
-	RSize        TokenType = "reserved_size"
-	RName        TokenType = "reserved_name"
-	RUnit        TokenType = "reserved_unit"
-	RMkdisk      TokenType = "reserved_mkdisk"
+	ResExec      TokenType = "reserved_exec"
+	ResPath      TokenType = "reserved_path"
+	ResSize      TokenType = "reserved_size"
+	ResName      TokenType = "reserved_name"
+	ResUnit      TokenType = "reserved_unit"
+	ResType      TokenType = "reserved_type"
+	ResAdd       TokenType = "reserved_add"
+	ResDelete    TokenType = "reserved_delete"
+	ResFit       TokenType = "reserved_fit"
+	ResMkdisk    TokenType = "reserved_mkdisk"
+	ResRmdisk    TokenType = "reserved_rmdisk"
+	ResFdisk     TokenType = "reserved_fdisk"
 	LexError     TokenType = "lex_error"
 	EndToken     TokenType = "end_token"
 )
@@ -43,6 +49,7 @@ var tokenList []Token
 
 //Analyze does a lexical analysis returning the identified tokens from a string
 func Analyze(command string) []Token {
+	tokenList = nil
 	command = command + "#"
 	state = 0
 	for i := 0; i < len(command); i++ {
@@ -72,7 +79,7 @@ func Analyze(command string) []Token {
 				auxlex += c
 			} else {
 				if getBoolMatch("#", c) && i == len(command)-1 {
-					fmt.Println("Analisis terminado")
+					//fmt.Println("Analisis terminado")
 					auxlex += "\n"
 					addToken(NewLine)
 				} else if !getBoolMatch("\\s", c) {
@@ -92,17 +99,29 @@ func Analyze(command string) []Token {
 			} else {
 
 				if strings.ToLower(auxlex) == "exec" {
-					addToken(RExec)
+					addToken(ResExec)
 				} else if strings.ToLower(auxlex) == "path" {
-					addToken(RPath)
+					addToken(ResPath)
 				} else if strings.ToLower(auxlex) == "size" {
-					addToken(RSize)
+					addToken(ResSize)
 				} else if strings.ToLower(auxlex) == "name" {
-					addToken(RName)
+					addToken(ResName)
 				} else if strings.ToLower(auxlex) == "unit" {
-					addToken(RUnit)
+					addToken(ResUnit)
 				} else if strings.ToLower(auxlex) == "mkdisk" {
-					addToken(RMkdisk)
+					addToken(ResMkdisk)
+				} else if strings.ToLower(auxlex) == "rmdisk" {
+					addToken(ResRmdisk)
+				} else if strings.ToLower(auxlex) == "fdisk" {
+					addToken(ResFdisk)
+				} else if strings.ToLower(auxlex) == "type" {
+					addToken(ResType)
+				} else if strings.ToLower(auxlex) == "fit" {
+					addToken(ResFit)
+				} else if strings.ToLower(auxlex) == "delete" {
+					addToken(ResDelete)
+				} else if strings.ToLower(auxlex) == "add" {
+					addToken(ResAdd)
 				} else {
 					addToken(ID)
 				}
