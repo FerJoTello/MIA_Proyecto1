@@ -21,6 +21,21 @@ var tokens []Lexical.Token    //tokens list from the command analyzed
 var actualToken Lexical.Token //actual token that is being analyzed
 var controlIndex int          //the index of the actual token
 
+var mountedDisks []mountedDisk
+
+type mountedDisk struct {
+	Path              string
+	ID                byte //letra
+	MountedPartitions []mountedPartition
+	UsedIDs           []byte
+}
+
+type mountedPartition struct {
+	ID          string //el mero mero identificador
+	Name        string //nombre real de la particion
+	PartitionID byte   //numero auxiliar para identificarlo
+}
+
 //EBRSIZE total size of the Ebr
 const EBRSIZE = unsafe.Sizeof(ebr{})
 
@@ -30,7 +45,7 @@ func totalEbrSize(sizeOnBytes uint64) uint64 {
 }
 
 type partition struct {
-	Name   [20]byte
+	Name   [16]byte
 	Type   byte
 	Fit    byte
 	Status byte
@@ -84,6 +99,7 @@ func main() {
 }
 
 func main001() {
+	mountedDisks = []mountedDisk{}
 	scanner := bufio.NewScanner(os.Stdin)
 	var command string
 	for command != "fin" {
@@ -99,7 +115,7 @@ func main001() {
 
 //to check commands
 func checkCommands() {
-	fmt.Println("start checking commands...")
+	//fmt.Println("start checking commands...")
 	controlIndex = 0
 	actualToken = tokens[controlIndex] //esto se puede optimizar xd
 	for controlIndex < len(tokens) {
@@ -116,6 +132,12 @@ func checkCommands() {
 		} else if compareActualToken(Lexical.ResFdisk) {
 			nextToken()
 			fdisk()
+		} else if compareActualToken(Lexical.ResMount) {
+			nextToken()
+			mount()
+		} else if compareActualToken(Lexical.ResUnmount) {
+			nextToken()
+			unmount()
 		}
 		//a command has executed
 		nextToken()
@@ -124,6 +146,179 @@ func checkCommands() {
 			break
 		}
 	}
+}
+
+func unmount() {
+	var ID string // variables used to hold the command values
+	//after splitting the command is necessary to iterate over the array in order to save the requeried values to do an operation
+	for !compareActualToken(Lexical.NewLine) {
+		if compareActualToken(Lexical.SMinus) {
+			//should be a parameter
+			nextToken()
+			if compareActualToken(Lexical.ResID) {
+				nextToken()
+				ID = getID()
+			}
+		} else {
+			nextToken()
+		}
+	}
+	if ID != "" {
+		var disk mountedDisk
+		//finding disk
+		var diskIndex int
+		diskID := ID[2]
+		for diskIndex = 0; diskIndex < len(mountedDisks); diskIndex++ {
+			if mountedDisks[diskIndex].ID == diskID {
+				disk = mountedDisks[diskIndex]
+				break
+			}
+		}
+		//disk founded. now find partition
+		for i, partID := 0, ID[3]; i < len(disk.MountedPartitions); i++ {
+			if disk.MountedPartitions[i].PartitionID == partID {
+				//partition founded. now has to be "unmounted"
+				copy(disk.MountedPartitions[i:], disk.MountedPartitions[i+1:])
+				disk.MountedPartitions = disk.MountedPartitions[:len(disk.MountedPartitions)-1]
+				disk.UsedIDs[i] = 0
+				break
+			}
+		}
+		//partition "unmounted". now check size
+		//now update
+		mountedDisks[diskIndex] = disk
+		/*
+			if len(disk.MountedPartitions)==0{
+
+			}*/
+	} else {
+		fmt.Println("Falta parametro para \"unmount\"")
+	}
+	fmt.Println("Fin comando unmount")
+}
+
+//mount
+func mount() {
+	var path, name string // variables used to hold the command values
+	//after splitting the command is necessary to iterate over the array in order to save the requeried values to do an operation
+	for !compareActualToken(Lexical.NewLine) {
+		if compareActualToken(Lexical.SMinus) {
+			//should be a parameter
+			nextToken()
+			if compareActualToken(Lexical.ResPath) {
+				nextToken()
+				path = getPathString()
+			} else if compareActualToken(Lexical.ResName) {
+				nextToken()
+				name = getID()
+			}
+		} else {
+			nextToken()
+		}
+	}
+	//checking if the params are defined
+	if path == "" && name == "" {
+		if len(mountedDisks) == 0 {
+			fmt.Println("No hay discos montados")
+		} else {
+			for i := 0; i < len(mountedDisks); i++ {
+				for j := 0; j < len(mountedDisks[i].MountedPartitions); j++ {
+					fmt.Println("-id->", mountedDisks[i].MountedPartitions[j].ID, "-path->", mountedDisks[i].Path, "-name->", mountedDisks[i].MountedPartitions[j].Name)
+				}
+			}
+		}
+	} else if path != "" && name != "" {
+		//validations
+		file, err := os.OpenFile(path, os.O_RDWR, os.ModePerm) //opens path's file
+		defer file.Close()
+		if err != nil {
+			fmt.Println("No se pudo abrir el archivo")
+			return
+		}
+		mbr, err := readDsk(file) //obtains mbr
+		if err != nil {
+			fmt.Println("No se pudo recuperar la info del mbr.")
+			return
+		}
+		var i int
+		for i = 0; i < len(mountedDisks); i++ { //finds disk index
+			if mountedDisks[i].Path == path { //disk has an id
+				break
+			}
+		}
+		var disk mountedDisk
+		if i == len(mountedDisks) { //disk doesn't have an id
+			disk.ID = 97 + byte(i)
+			disk.Path = path
+			mountedDisks = append(mountedDisks, disk)
+		} else {
+			disk = mountedDisks[i]
+		}
+		var nameOnBytes [16]byte
+		copy(nameOnBytes[:], name)
+		if !existName(nameOnBytes, mbr, file) { //checks if the partition with the provided name exists
+			fmt.Println("No existe el nombre de esa particion")
+			return
+		}
+		for j := 0; j < len(disk.MountedPartitions); j++ { //checks if the partition already was defined
+			if disk.MountedPartitions[j].Name == name {
+				fmt.Println("Particion ya montada")
+				return
+			}
+		}
+		var partID int
+		for partID = 0; partID < len(disk.UsedIDs); partID++ {
+			if disk.UsedIDs[partID] == 0 { //id available
+				break
+			}
+		}
+		newMP := mountedPartition{} //"mounts" a new partition
+		newMP.PartitionID = 49 + byte(partID)
+		newMP.ID = "vd" + string(disk.ID) + string(newMP.PartitionID)
+		newMP.Name = name
+		disk.MountedPartitions = append(disk.MountedPartitions, newMP)
+		disk.UsedIDs = append(disk.UsedIDs, newMP.PartitionID)
+		mountedDisks[i] = disk
+	} else {
+		fmt.Println("Faltan parametros para el comando mount")
+		return
+	}
+	fmt.Println("Fin comando mount")
+}
+
+func existName(name [16]byte, mbr mbr, file *os.File) bool {
+	var exists bool
+	for i := 0; i < 4; i++ {
+		if mbr.Partitions[i].Name == name {
+			return true
+		}
+		actualEbr := ebr{}
+		if mbr.Partitions[i].Type == 'E' { //looking for logic partitions
+			actualPosition := mbr.Partitions[i].Start
+			for true {
+				file.Seek(int64(actualPosition), 0)
+				//tries to obtain a possibly ebr
+				data := readNextBytes(file, int(EBRSIZE))
+				buffer := bytes.NewBuffer(data)
+				err := binary.Read(buffer, binary.BigEndian, &actualEbr)
+				if err != nil { //couldn't obtain ebr
+					fmt.Println("binary.Read failed", err)
+					return false
+				}
+				//ebr obtained. checking if the name already exists
+				if actualEbr.Name == name {
+					return true
+				}
+				//-1 if the ebr doesn't have a next
+				if actualEbr.Next == -1 { //means that the last ebr was founded
+					break
+				} else {
+					actualPosition = uint64(actualEbr.Next) //where is the next ebr (in case that exists)
+				}
+			}
+		}
+	}
+	return exists
 }
 
 //fdisk
@@ -171,6 +366,19 @@ func fdisk() {
 				fmt.Println("No se pudo abrir el archivo")
 				return
 			}
+			mbr, err := canCreatePartition(file)
+			if err != nil {
+				if err.Error() != "particiones ya definidas. no puede crear más" {
+					fmt.Println("No se puede crear particion", err.Error())
+				}
+				return
+			}
+			var nameOnBytes [16]byte
+			copy(nameOnBytes[:], name)
+			if existName(nameOnBytes, mbr, file) {
+				fmt.Println("No se puede crear particion con un nombre ya existente")
+				return
+			}
 			//Setting size
 			var sizeOnBytes uint64
 			if unit == "" || unit == "k" {
@@ -201,13 +409,13 @@ func fdisk() {
 			var typeOnByte byte
 			if strings.ToLower(typee) == "e" { //extended partition
 				typeOnByte = 'E'
-				createExtendedPartition(file, name, sizeOnBytes, fitOnByte, typeOnByte)
+				createExtendedPartition(file, mbr, nameOnBytes, sizeOnBytes, fitOnByte, typeOnByte)
 			} else if strings.ToLower(typee) == "l" { //logic partition
 				typeOnByte = 'L'
-				createLogicPartition(file, name, fitOnByte, sizeOnBytes)
+				createLogicPartition(file, mbr, nameOnBytes, fitOnByte, sizeOnBytes)
 			} else if strings.ToLower(typee) == "p" || typee == "" { //primary partition
 				typeOnByte = 'P'
-				createPrimaryPartition(file, name, sizeOnBytes, fitOnByte, typeOnByte)
+				createPrimaryPartition(file, mbr, nameOnBytes, sizeOnBytes, fitOnByte, typeOnByte)
 			} else {
 				fmt.Println("No se ha podido crear la particion. El tipo indicado no es valido.")
 				return
@@ -216,12 +424,7 @@ func fdisk() {
 	}
 }
 
-func createLogicPartition(file *os.File, partName string, fit byte, size uint64) {
-	mbr, err := canCreatePartition(file)
-	if err.Error() != "particiones ya definidas. no puede crear más" {
-		fmt.Println("No se puede crear particion", err.Error())
-		return
-	}
+func createLogicPartition(file *os.File, mbr mbr, partName [16]byte, fit byte, size uint64) {
 	//find if a extended partition exists
 	var extendedIndex int
 	var existsExtended bool
@@ -239,15 +442,14 @@ func createLogicPartition(file *os.File, partName string, fit byte, size uint64)
 	//obtaining ebr
 	actualPosition := int64(extended.Start)
 	actualEbr := ebr{}
-	ebrSize := int(unsafe.Sizeof(actualEbr))
 	var ebrList []ebr //contains founded ebr
 	//there could exist more than one ebr partition on the extended so it's necessary to find where its logic ends
 	for true {
 		file.Seek(int64(actualPosition), 0)
 		//tries to obtain a possibly ebr
-		data := readNextBytes(file, ebrSize)
+		data := readNextBytes(file, int(EBRSIZE))
 		buffer := bytes.NewBuffer(data)
-		err = binary.Read(buffer, binary.BigEndian, &actualEbr)
+		err := binary.Read(buffer, binary.BigEndian, &actualEbr)
 		if err != nil { //couldn't obtain ebr
 			fmt.Println("binary.Read failed", err)
 			return
@@ -265,7 +467,7 @@ func createLogicPartition(file *os.File, partName string, fit byte, size uint64)
 	actualEbr.Fit = fit
 	actualEbr.Size = size
 	actualEbr.Next = -1
-	copy(actualEbr.Name[:], partName)
+	actualEbr.Name = partName
 	//actualEbr.Start is not defined yet since it's necessary to find its position
 	if len(ebrList) > 1 { //more than one ebr
 		for i := 0; i < len(ebrList); i++ { //looking through the ebrs to find the first fit
@@ -324,15 +526,10 @@ func createLogicPartition(file *os.File, partName string, fit byte, size uint64)
 	}
 }
 
-func createExtendedPartition(file *os.File, partName string, size uint64, fit byte, typee byte) {
-	mbr, err := canCreatePartition(file)
-	if err != nil {
-		fmt.Println("No se puede crear particion", err.Error())
-		return
-	}
+func createExtendedPartition(file *os.File, mbr mbr, partName [16]byte, size uint64, fit byte, typee byte) {
 	//creates a new partition with the provided name, size and the worst adjustment
 	newPartition := partition{}
-	copy(newPartition.Name[:], partName)
+	newPartition.Name = partName
 	newPartition.Status = 'F'
 	newPartition.Fit = fit
 	newPartition.Type = typee
@@ -376,16 +573,10 @@ func canCreatePartition(file *os.File) (mbr, error) {
 	return mbr, nil
 }
 
-func createPrimaryPartition(file *os.File, partName string, size uint64, fit byte, typee byte) {
-	//checking if partitions are available
-	mbr, err := canCreatePartition(file)
-	if err != nil {
-		fmt.Println("No se puede crear particion", err.Error())
-		return
-	}
+func createPrimaryPartition(file *os.File, mbr mbr, partName [16]byte, size uint64, fit byte, typee byte) {
 	//creates a new partition with the provided name, size and adjustment
 	newPartition := partition{}
-	copy(newPartition.Name[:], partName)
+	newPartition.Name = partName
 	newPartition.Status = 'F'
 	newPartition.Fit = fit
 	newPartition.Type = typee
@@ -608,11 +799,10 @@ func writeMbr(path string, fileName string, sizeOnBytes uint64, newMbr mbr) {
 	var binario3 bytes.Buffer
 	binary.Write(&binario3, binary.BigEndian, s1)
 	escribirBytes(file, binario3.Bytes())
-	fmt.Println("File created succesfully xd")
+	//fmt.Println("File created succesfully xd")
 }
 
 func escribirBytes(file *os.File, bytes []byte) {
-
 	_, err := file.Write(bytes)
 	if err != nil {
 		log.Fatal(err)

@@ -20,6 +20,7 @@ const (
 	NewLine      TokenType = "new_line"
 	SMinus       TokenType = "minus"
 	SArrow       TokenType = "arrow"
+	ResID        TokenType = "reserved_id"
 	ResExec      TokenType = "reserved_exec"
 	ResPath      TokenType = "reserved_path"
 	ResSize      TokenType = "reserved_size"
@@ -32,6 +33,8 @@ const (
 	ResMkdisk    TokenType = "reserved_mkdisk"
 	ResRmdisk    TokenType = "reserved_rmdisk"
 	ResFdisk     TokenType = "reserved_fdisk"
+	ResMount     TokenType = "reserved_mount"
+	ResUnmount   TokenType = "reserved_unmount"
 	LexError     TokenType = "lex_error"
 	EndToken     TokenType = "end_token"
 )
@@ -122,6 +125,12 @@ func Analyze(command string) []Token {
 					addToken(ResDelete)
 				} else if strings.ToLower(auxlex) == "add" {
 					addToken(ResAdd)
+				} else if strings.ToLower(auxlex) == "mount" {
+					addToken(ResMount)
+				} else if strings.ToLower(auxlex) == "unmount" {
+					addToken(ResUnmount)
+				} else if strings.ToLower(auxlex) == "id" {
+					addToken(ResID)
 				} else {
 					addToken(ID)
 				}
