@@ -35,6 +35,7 @@ const (
 	ResFdisk     TokenType = "reserved_fdisk"
 	ResMount     TokenType = "reserved_mount"
 	ResUnmount   TokenType = "reserved_unmount"
+	ResPause     TokenType = "reserved_pause"
 	LexError     TokenType = "lex_error"
 	EndToken     TokenType = "end_token"
 )
@@ -131,6 +132,8 @@ func Analyze(command string) []Token {
 					addToken(ResUnmount)
 				} else if strings.ToLower(auxlex) == "id" {
 					addToken(ResID)
+				} else if strings.ToLower(auxlex) == "pause" {
+					addToken(ResPause)
 				} else {
 					addToken(ID)
 				}

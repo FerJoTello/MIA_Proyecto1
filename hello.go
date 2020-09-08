@@ -95,10 +95,6 @@ func readNextBytes(file *os.File, number int) []byte {
 }
 
 func main() {
-	main001()
-}
-
-func main001() {
 	mountedDisks = []mountedDisk{}
 	scanner := bufio.NewScanner(os.Stdin)
 	var command string
@@ -148,6 +144,7 @@ func checkCommands() {
 	}
 }
 
+//unmount
 func unmount() {
 	var ID string // variables used to hold the command values
 	//after splitting the command is necessary to iterate over the array in order to save the requeried values to do an operation
@@ -286,6 +283,7 @@ func mount() {
 	fmt.Println("Fin comando mount")
 }
 
+//checks if a previous partition already exists
 func existName(name [16]byte, mbr mbr, file *os.File) bool {
 	var exists bool
 	for i := 0; i < 4; i++ {
@@ -885,4 +883,9 @@ func getID() string {
 		}
 	}
 	return unit
+}
+
+func pause() {
+	fmt.Print("Ejecucion en pausa. Pulse Enter.")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
