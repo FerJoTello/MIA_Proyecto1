@@ -36,6 +36,7 @@ const (
 	ResMount     TokenType = "reserved_mount"
 	ResUnmount   TokenType = "reserved_unmount"
 	ResPause     TokenType = "reserved_pause"
+	ResTipo      TokenType = "reserved_tipo"
 	LexError     TokenType = "lex_error"
 	EndToken     TokenType = "end_token"
 )
@@ -132,6 +133,10 @@ func Analyze(command string) []Token {
 					addToken(ResUnmount)
 				} else if strings.ToLower(auxlex) == "id" {
 					addToken(ResID)
+				} else if strings.ToLower(auxlex) == "tipo" {
+					addToken(ResTipo)
+				} else if strings.ToLower(auxlex) == "add" {
+					addToken(ResAdd)
 				} else if strings.ToLower(auxlex) == "pause" {
 					addToken(ResPause)
 				} else {
