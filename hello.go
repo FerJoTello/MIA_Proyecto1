@@ -10,6 +10,7 @@ import (
 
 	DiskManager "./elements/diskmanager"
 	Lexical "./elements/lexical"
+	LWH "./elements/lwh"
 )
 
 var tokens []Lexical.Token    //tokens list from the command analyzed
@@ -56,6 +57,12 @@ func checkCommands() {
 		} else if compareActualToken(Lexical.ResUnmount) {
 			nextToken()
 			unmount()
+		} else if compareActualToken(Lexical.ResMkfs) {
+			nextToken()
+			mkfs()
+		} else if compareActualToken(Lexical.ResRep) {
+			nextToken()
+			rep()
 		}
 		//a command has executed
 		nextToken()
@@ -64,6 +71,59 @@ func checkCommands() {
 			break
 		}
 	}
+}
+
+func rep() {
+	var nombre, path, id, ruta string
+	for !compareActualToken(Lexical.NewLine) {
+		if compareActualToken(Lexical.SMinus) {
+			//should be a parameter
+			nextToken()
+			if compareActualToken(Lexical.ResNombre) {
+				nextToken()
+				nombre = getID()
+			} else if compareActualToken(Lexical.ResPath) {
+				nextToken()
+				path = getPathString()
+			} else if compareActualToken(Lexical.ResID) {
+				nextToken()
+				id = getID()
+			} else if compareActualToken(Lexical.ResRuta) {
+				nextToken()
+				ruta = getPathString()
+			}
+		} else {
+			nextToken()
+		}
+	}
+	DiskManager.Rep(nombre, path, id, ruta)
+}
+
+func mkfs() {
+	var ID, tipo, unit string
+	var add int
+	for !compareActualToken(Lexical.NewLine) {
+		if compareActualToken(Lexical.SMinus) {
+			//should be a parameter
+			nextToken()
+			if compareActualToken(Lexical.ResID) {
+				nextToken()
+				ID = getID()
+			} else if compareActualToken(Lexical.ResTipo) {
+				nextToken()
+				tipo = getID()
+			} else if compareActualToken(Lexical.ResAdd) {
+				nextToken()
+				add = getNumber()
+			} else if compareActualToken(Lexical.ResUnit) {
+				nextToken()
+				unit = getID()
+			}
+		} else {
+			nextToken()
+		}
+	}
+	LWH.Mkfs(ID, tipo, add, unit) //not ready yet
 }
 
 //unmount

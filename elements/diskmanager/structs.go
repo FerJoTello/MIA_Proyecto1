@@ -40,15 +40,17 @@ func TotalEbrSize(sizeOnBytes uint64) uint64 {
 
 //MountedDisk is a struct used to represent a mounted disk on mount
 type MountedDisk struct {
-	Path              string
-	ID                byte //letra
-	MountedPartitions []MountedPartition
-	UsedIDs           []byte
+	Path              string             //ruta del archivo que representa al disco
+	Name              [16]byte           //nombre del disco
+	ID                byte               //letra
+	MountedPartitions []MountedPartition //particiones montadas en el disco
+	UsedIDs           []byte             //ids de cada particion montada
 }
 
 //MountedPartition is a struct used to represent a mounted partition on mount
 type MountedPartition struct {
-	ID          string //el mero mero identificador
-	Name        string //nombre real de la particion
-	PartitionID byte   //numero auxiliar para identificarlo
+	ID            string //el mero mero identificador
+	Name          string //nombre real de la particion
+	PartitionID   byte   //numero auxiliar para identificarlo
+	PartitionSize uint64 //parametro utilizado en mkfs
 }

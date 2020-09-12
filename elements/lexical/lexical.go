@@ -35,8 +35,12 @@ const (
 	ResFdisk     TokenType = "reserved_fdisk"
 	ResMount     TokenType = "reserved_mount"
 	ResUnmount   TokenType = "reserved_unmount"
+	ResMkfs      TokenType = "reserved_mkfs"
 	ResPause     TokenType = "reserved_pause"
 	ResTipo      TokenType = "reserved_tipo"
+	ResRep       TokenType = "reserved_rep"
+	ResNombre    TokenType = "reserved_nombre"
+	ResRuta      TokenType = "reserved_ruta"
 	LexError     TokenType = "lex_error"
 	EndToken     TokenType = "end_token"
 )
@@ -137,8 +141,16 @@ func Analyze(command string) []Token {
 					addToken(ResTipo)
 				} else if strings.ToLower(auxlex) == "add" {
 					addToken(ResAdd)
+				} else if strings.ToLower(auxlex) == "mkfs" {
+					addToken(ResMkfs)
 				} else if strings.ToLower(auxlex) == "pause" {
 					addToken(ResPause)
+				} else if strings.ToLower(auxlex) == "rep" {
+					addToken(ResRep)
+				} else if strings.ToLower(auxlex) == "nombre" {
+					addToken(ResNombre)
+				} else if strings.ToLower(auxlex) == "ruta" {
+					addToken(ResRuta)
 				} else {
 					addToken(ID)
 				}

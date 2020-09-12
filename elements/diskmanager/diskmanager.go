@@ -7,12 +7,30 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
 
 //MountedDisks is an array that contains all the information of mount
 var MountedDisks []MountedDisk
+
+//Rep function where: nombre is the report type, path is where is going to be generated, id is the mounted partition's id, ruta is optional for some report types
+func Rep(nombre string, path string, id string, ruta string) {
+	if nombre != "" && path != "" && id != "" {
+		var dot string
+		if nombre == "disk" {
+			dot = disk(id)
+		}
+		if dot != "" {
+			generateDot(dot, path)
+		}
+	} else {
+		fmt.Println("No es posible ejecutar el comando \"rep\". Parametros no definidos")
+	}
+	fmt.Println("Fin comando \"rep\".")
+}
 
 //Mkdisk function
 func Mkdisk(path string, name string, unit string, size int) {
@@ -85,7 +103,7 @@ func Fdisk(path string, name string, unit string, typee string, fit string, dele
 			}
 			var nameOnBytes [16]byte
 			copy(nameOnBytes[:], name)
-			if existName(nameOnBytes, mbr, file) {
+			if IndexPartition(nameOnBytes, mbr, file) != -1 {
 				fmt.Println("No se puede crear particion con un nombre ya existente")
 				return
 			}
@@ -176,15 +194,14 @@ func Mount(path string, name string) {
 		}
 		var nameOnBytes [16]byte
 		copy(nameOnBytes[:], name)
-		if !existName(nameOnBytes, mbr, file) { //checks if the partition with the provided name exists
+		indexPartition := IndexPartition(nameOnBytes, mbr, file)
+		if indexPartition == -1 { //checks if the partition with the provided name exists
 			fmt.Println("No existe el nombre de esa particion")
 			return
 		}
-		for j := 0; j < len(disk.MountedPartitions); j++ { //checks if the partition already was defined
-			if disk.MountedPartitions[j].Name == name {
-				fmt.Println("Particion ya montada")
-				return
-			}
+		if MountedIndex(name, disk) != -1 {
+			fmt.Println("Particion ya montada")
+			return
 		}
 		var partID int
 		for partID = 0; partID < len(disk.UsedIDs); partID++ {
@@ -196,6 +213,7 @@ func Mount(path string, name string) {
 		newMP.PartitionID = 49 + byte(partID)
 		newMP.ID = "vd" + string(disk.ID) + string(newMP.PartitionID)
 		newMP.Name = name
+		newMP.PartitionSize = mbr.Partitions[indexPartition].Size
 		disk.MountedPartitions = append(disk.MountedPartitions, newMP)
 		disk.UsedIDs = append(disk.UsedIDs, newMP.PartitionID)
 		MountedDisks[i] = disk
@@ -204,6 +222,16 @@ func Mount(path string, name string) {
 		return
 	}
 	fmt.Println("Fin comando mount")
+}
+
+//MountedIndex checks if a name (id) was already mounted on a disk returning the index. if the partition wasn't mounted yet it returns -1
+func MountedIndex(name string, disk MountedDisk) int {
+	for j := 0; j < len(disk.MountedPartitions); j++ { //checks if the partition already was defined
+		if disk.MountedPartitions[j].Name == name || disk.MountedPartitions[j].ID == name {
+			return j
+		}
+	}
+	return -1
 }
 
 //Unmount function
@@ -545,12 +573,11 @@ func readNextBytes(file *os.File, number int) []byte {
 	return bytes
 }
 
-//checks if a previous partition already exists
-func existName(name [16]byte, mbr Mbr, file *os.File) bool {
-	var exists bool
+//IndexPartition checks if a previous partition already exists returning its index or -1 if it doesn't exists
+func IndexPartition(name [16]byte, mbr Mbr, file *os.File) int {
 	for i := 0; i < 4; i++ {
 		if mbr.Partitions[i].Name == name {
-			return true
+			return i
 		}
 		actualEbr := Ebr{}
 		if mbr.Partitions[i].Type == 'E' { //looking for logic partitions
@@ -563,11 +590,11 @@ func existName(name [16]byte, mbr Mbr, file *os.File) bool {
 				err := binary.Read(buffer, binary.BigEndian, &actualEbr)
 				if err != nil { //couldn't obtain ebr
 					fmt.Println("binary.Read failed", err)
-					return false
+					return -1
 				}
 				//ebr obtained. checking if the name already exists
 				if actualEbr.Name == name {
-					return true
+					return i
 				}
 				//-1 if the ebr doesn't have a next
 				if actualEbr.Next == -1 { //means that the last ebr was founded
@@ -578,5 +605,137 @@ func existName(name [16]byte, mbr Mbr, file *os.File) bool {
 			}
 		}
 	}
-	return exists
+	return -1
+}
+
+//reports
+func disk(idPartition string) string {
+	var diskPath string //obtaining disk path
+	for i := 0; i < len(MountedDisks); i++ {
+		for j := 0; j < len(MountedDisks[i].MountedPartitions); j++ {
+			if MountedDisks[i].MountedPartitions[j].ID == idPartition {
+				diskPath = MountedDisks[i].Path
+				break
+			}
+		}
+	}
+	if diskPath == "" {
+		fmt.Println("El id de la particion no fue encontrado.")
+		return ""
+	}
+	//validations
+	file, err := os.OpenFile(diskPath, os.O_RDWR, os.ModePerm) //opens path's file
+	defer file.Close()
+	if err != nil {
+		fmt.Println("No se pudo abrir el archivo")
+		return ""
+	}
+	mbr, err := readDsk(file) //obtains mbr
+	if err != nil {
+		fmt.Println("No se pudo recuperar la info del mbr.")
+		return ""
+	} //creating report
+	dot := "digraph G {\n" +
+		"label = \"Disk\";\n" +
+		"no[shape = none\n" +
+		"label=<\n" +
+		"<table align=\"center\" border=\"1\">\n" +
+		"<tr>\n" + //first row
+		"<td rowspan=\"2\">MBR</td>\n" //first cell
+	startPosition := mbr.Size //is where the last occupied space
+	var extendedRow string    //string where the logic partitions are represented
+	for i := 0; i < 4; i++ {
+		freeSpace := mbr.Partitions[i].Start - startPosition
+		if freeSpace > 0 {
+			//cell on the first row
+			dot += "<td rowspan=\"2\">Libre</td>\n"
+		}
+		if mbr.Partitions[i].Type == 'P' {
+			//cell on the first row
+			array := mbr.Partitions[i].Name[:]
+			n := bytes.IndexByte(array, 0)
+			dot += "<td rowspan=\"2\">Primaria: " + string(mbr.Partitions[i].Name[:n]) + "</td>\n"
+		} else if mbr.Partitions[i].Type == 'E' {
+			extended := mbr.Partitions[i]
+			//obtaining ebr
+			actualPosition := int64(extended.Start)
+			actualEbr := Ebr{}
+			var ebrList []Ebr //contains founded ebr
+			//there could exist more than one ebr partition on the extended so it's necessary to find where its logic ends
+			for true {
+				file.Seek(int64(actualPosition), 0)
+				//tries to obtain a possibly ebr
+				data := readNextBytes(file, int(EBRSIZE))
+				buffer := bytes.NewBuffer(data)
+				err := binary.Read(buffer, binary.BigEndian, &actualEbr)
+				if err != nil { //couldn't obtain ebr
+					fmt.Println("binary.Read failed", err)
+					return ""
+				}
+				//ebr obtained
+				ebrList = append(ebrList, actualEbr) //adding founded ebr on ebrList
+				actualPosition = actualEbr.Next      //where is the next ebr (in case that exists)
+				//-1 if the ebr doesn't have a next
+				if actualPosition == -1 { //means that the last ebr was founded
+					break
+				}
+			}
+			//with the finded ebrs it's necessary to graph the ebrs and its logics (if they exist)
+			var freeOnExtended int //'free' cells on extended
+			startPosition = ebrList[0].Start
+			for j := 0; j < len(ebrList); j++ {
+				freeSpace = ebrList[j].Start - startPosition
+				if freeSpace > 0 {
+					//cell on the first row
+					extendedRow += "<td>Libre</td>\n"
+					freeOnExtended++
+				}
+				array := mbr.Partitions[i].Name[:]
+				n := bytes.IndexByte(array, 0)
+				extendedRow += "<td>EBR: " + string(mbr.Partitions[i].Name[:n]) + "</td>\n"
+				if ebrList[j].Next == -1 {
+					extendedRow += "<td>Libre</td>\n"
+					freeOnExtended++
+				}
+				startPosition += ebrList[j].Size
+			}
+			//cell on the first row
+			array := mbr.Partitions[i].Name[:]
+			n := bytes.IndexByte(array, 0)
+			dot += "<td colspan=\"" + strconv.Itoa(freeOnExtended+len(ebrList)) + "\">Extendida: " + string(mbr.Partitions[i].Name[:n]) + "</td>\n"
+		}
+		startPosition += mbr.Partitions[i].Size
+	}
+	dot += "<td rowspan=\"2\">Libre</td>\n"
+	dot += "</tr>\n<tr>" + extendedRow + "</tr></table>" +
+		">];" +
+		"}"
+	return dot
+}
+
+func generateDot(dotText string, path string) {
+	//obtaining the folder
+	folder := path[:strings.LastIndex(path, "/")]
+	name := path[strings.LastIndex(path, "/")+1 : strings.LastIndex(path, ".")]
+	extension := path[strings.LastIndex(path, ".")+1:]
+	dotPath := folder + "/" + name + ".dot"
+	createFolders(folder)
+	//the file is created with the provided name and path
+	file, err := os.Create(dotPath)
+	if err != nil {
+		fmt.Println("Ha ocurrido un error al crear el archivo dot.", err.Error())
+		return
+	}
+	file.WriteString(dotText)
+	file.Close()
+	out, _ := exec.Command("dot", "-T"+extension, dotPath).CombinedOutput()
+	if out != nil {
+		fmt.Println("Error al generar el archivo dot.", string(out))
+		return
+	}
+	out, _ = exec.Command("xdg-open", path).CombinedOutput()
+	if out != nil {
+		fmt.Println("Error al abrir el archivo generado.", string(out))
+		return
+	}
 }

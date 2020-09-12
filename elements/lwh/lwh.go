@@ -1,12 +1,19 @@
 package elements
 
+import (
+	"encoding/binary"
+	"fmt"
+
+	"../diskmanager"
+)
+
 type superBoot struct {
 	nameHD                       [16]byte //nombre del disco virtual
-	countdirectoryTree           uint32   //cantidad de estructuras en el arbol de directorio
+	countDirectoryTree           uint32   //cantidad de estructuras en el arbol de directorio
 	countDirectoryDetail         uint32   //cantidad de estructuras en el detalle de directorio
 	countiNodes                  uint32   //cantidad de inodos en la tabla de inodos
 	countDataBlocks              uint32   //cantidad de bloque de datos libres
-	freedirectoryTree            uint32   //cantidad de estructuras en el arbol de directorio libres
+	freeDirectoryTree            uint32   //cantidad de estructuras en el arbol de directorio libres
 	freeDirectoryDetail          uint32   //cantidad de estructuras en el detalle de directorio libres
 	freeiNodes                   uint32   //cantidad de inodos en la tabla de inodos libres
 	freeDataBlocks               uint32   //cantidad de bloque de datos
@@ -74,4 +81,58 @@ type myLog struct {
 	name          [16]byte //nombre de archivo o directorio
 	content       [100]byte
 	date          [20]byte
+}
+
+var superBootSize = uint64(binary.Size(superBoot{}))
+
+var directoryTreeSize = uint64(binary.Size(directoryTree{}))
+var directoryDetailSize = uint64(binary.Size(directoryDetail{}))
+var iNodeSize = uint64(binary.Size(iNode{}))
+var dataBlockSize = uint64(binary.Size(dataBlock{}))
+var logSize = uint64(binary.Size(myLog{}))
+
+//MAGICNUMBER es el numero de carnet
+const MAGICNUMBER = 201800714
+
+//Mkfs function
+func Mkfs(ID string, tipo string, add int, unit string) {
+	if ID != "" {
+		var diskIndex, partIndex int
+		//the disk where the partition was mounted is needed
+		for diskIndex = 0; diskIndex < len(diskmanager.MountedDisks); diskIndex++ {
+			partIndex = diskmanager.MountedIndex(ID, diskmanager.MountedDisks[diskIndex])
+			if partIndex != -1 {
+				break
+			}
+		}
+		if partIndex != -1 {
+			part := diskmanager.MountedDisks[diskIndex].MountedPartitions[partIndex]
+			if part.PartitionSize <= 2*superBootSize {
+				fmt.Println("La particion es menor a", superBootSize, "bytes. No se puede formatear porque el tamano no es suficiente.")
+				return
+			}
+			structuresNumber := uint32((part.PartitionSize - (2 * superBootSize)) / (27 + directoryTreeSize + directoryDetailSize + (5*iNodeSize + (20 * dataBlockSize) + logSize)))
+			fmt.Println("NumeroDeEstructuras:", structuresNumber)
+			//new superBoot is instantiated
+			sBoot := superBoot{}
+			copy(sBoot.nameHD[:], part.Name) //hard disk name
+			sBoot.countDirectoryTree = structuresNumber
+			sBoot.countDirectoryDetail = structuresNumber
+			sBoot.countiNodes = 5 * structuresNumber
+			sBoot.countDataBlocks = 20 * structuresNumber
+			sBoot.freeDirectoryTree = sBoot.countDirectoryTree
+			sBoot.freeDirectoryDetail = sBoot.countDirectoryDetail
+			sBoot.freeiNodes = sBoot.countiNodes
+			sBoot.freeDataBlocks = sBoot.countDataBlocks
+			sBoot.directoryTreeStructSize = uint32(directoryTreeSize)
+			sBoot.directoryDetailStructSize = uint32(directoryDetailSize)
+			sBoot.iNodeStructSize = uint32(iNodeSize)
+			sBoot.dataBlockStructSize = uint32(dataBlockSize)
+
+		} else {
+			fmt.Println("La partición debe estar montada antes de formatearla.")
+		}
+	} else {
+		fmt.Println("No se proporcionaron los parametros necesarios para \"mkfs\"")
+	}
 }
