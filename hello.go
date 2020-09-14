@@ -19,12 +19,12 @@ var controlIndex int          //the index of the actual token
 
 func main() {
 	DiskManager.MountedDisks = []DiskManager.MountedDisk{}
-	//scanner := bufio.NewScanner(os.Stdin)
+	scanner := bufio.NewScanner(os.Stdin)
 	var command string
 	for command != "fin" {
 		fmt.Println("Ingresa un comando :p")
-		//scanner.Scan()
-		command = "exec -pAth->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/Pruebas/Pruebas.mia\"" //scanner.Text() exec -pAth->\"/home/fernando/Descargas/Entrada1.mia\"
+		scanner.Scan()
+		command = scanner.Text() //exec -pAth->\"/home/fernando/Descargas/Entrada1.mia\"
 		tokens = Lexical.Analyze(command)
 		//is necessary to check if the tokens correspond to a command
 		checkCommands()
@@ -70,7 +70,7 @@ func checkCommands() {
 		//a command has executed
 		nextToken()
 		if controlIndex == -1 {
-			fmt.Println("Ya estufas")
+			//fmt.Println("Ya estufas")
 			break
 		}
 	}

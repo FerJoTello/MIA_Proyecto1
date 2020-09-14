@@ -15,7 +15,7 @@ type Partition struct {
 //Mbr is a struct used on mkdisk
 type Mbr struct {
 	Size          uint64
-	CreationDate  [20]byte
+	CreationDate  [19]byte
 	DiskSignature uint64
 	Partitions    [4]Partition
 }

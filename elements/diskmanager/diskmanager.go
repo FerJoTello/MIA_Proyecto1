@@ -20,8 +20,10 @@ var MountedDisks []MountedDisk
 func Rep(nombre string, path string, id string, ruta string) {
 	if nombre != "" && path != "" && id != "" {
 		var dot string
-		if nombre == "disk" {
+		if strings.ToLower(nombre) == "disk" {
 			dot = disk(id)
+		} else if strings.ToLower(nombre) == "mbr" {
+			dot = mbrReport(id)
 		}
 		if dot != "" {
 			generateDot(dot, path)
@@ -621,8 +623,7 @@ func IndexPartition(name [16]byte, mbr Mbr, file *os.File) int {
 	return -1
 }
 
-//reports
-func disk(idPartition string) string {
+func findPartitionFromID(idPartition string) string {
 	var diskPath string //obtaining disk path
 	for i := 0; i < len(MountedDisks); i++ {
 		for j := 0; j < len(MountedDisks[i].MountedPartitions); j++ {
@@ -632,6 +633,13 @@ func disk(idPartition string) string {
 			}
 		}
 	}
+	return diskPath
+}
+
+//reports
+func disk(idPartition string) string {
+	//obtaining disk path
+	diskPath := findPartitionFromID(idPartition)
 	if diskPath == "" {
 		fmt.Println("El id de la particion no fue encontrado.")
 		return ""
@@ -728,6 +736,89 @@ func disk(idPartition string) string {
 	dot += "</tr>\n<tr>" + extendedRow + "</tr></table>" +
 		">];" +
 		"}"
+	return dot
+}
+
+func mbrReport(idPartition string) string {
+	//obtaining disk path
+	diskPath := findPartitionFromID(idPartition)
+	if diskPath == "" {
+		fmt.Println("El id de la particion no fue encontrado.")
+		return ""
+	}
+	//validations
+	file, err := os.OpenFile(diskPath, os.O_RDWR, os.ModePerm) //opens path's file
+	defer file.Close()
+	if err != nil {
+		fmt.Println("No se pudo abrir el archivo")
+		return ""
+	}
+	mbr, err := readDsk(file) //obtains mbr
+	if err != nil {
+		fmt.Println("No se pudo recuperar la info del mbr.")
+		return ""
+	}
+	var dot string
+	dot = "digraph MBR{\n" +
+		"MBR[shape = none;\n" +
+		"label=<\n" +
+		"<table cellspacing='-1' cellborder='1'>\n" +
+		"<tr><td colspan='2'>MBR REPORTE</td></tr>\n" +
+		"<tr><td><b>Nombre</b></td><td><b>Valor</b></td></tr>\n" +
+		"<tr><td>mbr_size</td><td>" + strconv.Itoa(int(mbr.Size)) + " bytes</td></tr>\n" +
+		"<tr><td>mbr_creation_date</td><td>" + string(mbr.CreationDate[:]) + " bytes</td></tr>\n" +
+		"<tr><td>mbr_disk_signature</td><td>" + strconv.Itoa(int(mbr.DiskSignature)) + " bytes</td></tr>\n"
+	for i := 0; i < 4; i++ {
+		num := strconv.Itoa(i + 1)
+		array := mbr.Partitions[i].Name[:]
+		n := bytes.IndexByte(array, 0)
+		dot += "<tr><td>part_status_" + num + "</td><td>" + string(mbr.Partitions[i].Status) + "</td></tr>\n" +
+			"<tr><td>part_type_" + num + "</td><td>" + string(mbr.Partitions[i].Type) + "</td></tr>\n" +
+			"<tr><td>part_fit_" + num + "</td><td>" + string(mbr.Partitions[i].Fit) + "</td></tr>\n" +
+			"<tr><td>part_start_" + num + "</td><td>" + strconv.Itoa(int(mbr.Partitions[i].Start)) + "</td></tr>\n" +
+			"<tr><td>part_size_" + num + "</td><td>" + strconv.Itoa(int(mbr.Partitions[i].Size)) + " bytes</td></tr>\n" +
+			"<tr><td>part_name_" + num + "</td><td>" + string(mbr.Partitions[i].Name[:n]) + "</td></tr>\n"
+		if mbr.Partitions[i].Type == 'E' {
+			extended := mbr.Partitions[i]
+			//obtaining ebr
+			actualPosition := int64(extended.Start)
+			actualEbr := Ebr{}
+			var ebrList []Ebr //contains founded ebr
+			//there could exist more than one ebr partition on the extended so it's necessary to find where its logic ends
+			for true {
+				file.Seek(int64(actualPosition), 0)
+				//tries to obtain a possibly ebr
+				data := readNextBytes(file, int(EBRSIZE))
+				buffer := bytes.NewBuffer(data)
+				err := binary.Read(buffer, binary.BigEndian, &actualEbr)
+				if err != nil { //couldn't obtain ebr
+					fmt.Println("binary.Read failed", err)
+					return ""
+				}
+				//ebr obtained
+				ebrList = append(ebrList, actualEbr) //adding founded ebr on ebrList
+				actualPosition = actualEbr.Next      //where is the next ebr (in case that exists)
+				//-1 if the ebr doesn't have a next
+				if actualPosition == -1 { //means that the last ebr was founded
+					break
+				}
+			}
+			for j := 0; j < len(ebrList); j++ {
+				num = strconv.Itoa(j + 1)
+				array = ebrList[j].Name[:]
+				n = bytes.IndexByte(array, 0)
+				dot += "<tr><td>part_status_" + num + "</td><td>" + string(ebrList[j].Status) + "</td></tr>\n" +
+					"<tr><td>part_type_" + num + "</td><td>E</td></tr>\n" +
+					"<tr><td>part_fit_" + num + "</td><td>" + string(ebrList[j].Fit) + "</td></tr>\n" +
+					"<tr><td>part_start_" + num + "</td><td>" + strconv.Itoa(int(ebrList[j].Start)) + "</td></tr>\n" +
+					"<tr><td>part_size_" + num + "</td><td>" + strconv.Itoa(int(ebrList[j].Size)) + " bytes</td></tr>\n" +
+					"<tr><td>part_next_" + num + "</td><td>" + strconv.Itoa(int(ebrList[j].Next)) + " bytes</td></tr>\n" +
+					"<tr><td>part_name_" + num + "</td><td>" + string(ebrList[j].Name[:n]) + "</td></tr>\n"
+			}
+		}
+	}
+	dot += "</table>\n" +
+		">];}"
 	return dot
 }
 
