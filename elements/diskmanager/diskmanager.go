@@ -63,6 +63,7 @@ func Mkdisk(path string, name string, unit string, size int) {
 	} else {
 		fmt.Println("No es posible ejecutar el comando \"mkdisk\". Parametros no definidos")
 	}
+	fmt.Println("Fin comando \"mkdisk\"")
 }
 
 //Rmdisk function
@@ -77,6 +78,9 @@ func Rmdisk(path string) {
 				println("Se eliminó correctamente")
 				return
 			}
+		} else {
+			fmt.Println("No se elimino el disco.")
+			return
 		}
 	}
 	fmt.Println("No se ha podido eliminar el disco. No existe")
@@ -95,10 +99,8 @@ func Fdisk(path string, name string, unit string, typee string, fit string, dele
 				return
 			}
 			mbr, err := canCreatePartition(file)
-			if err != nil {
-				if err.Error() != "particiones ya definidas. no puede crear más" {
-					fmt.Println("No se puede crear particion", err.Error())
-				}
+			if err != nil && strings.ToLower(typee) != "l" {
+				fmt.Println("No se puede crear particion.", err.Error())
 				return
 			}
 			var nameOnBytes [16]byte
@@ -149,7 +151,10 @@ func Fdisk(path string, name string, unit string, typee string, fit string, dele
 				return
 			}
 		}
+	} else {
+		fmt.Println("Faltan parametros obligatorios.")
 	}
+	fmt.Println("Fin comando \"fdisk\"")
 }
 
 //Mount function
@@ -316,9 +321,10 @@ func createFolders(path string) {
 	//the path should exist
 	if !existFolders(path) {
 		//if doesn't exist it's created
-		mkdirErr := os.MkdirAll(path, os.ModePerm)
+		mkdirErr := os.MkdirAll(path, 0777)
 		if mkdirErr != nil {
-			log.Fatal(mkdirErr)
+			fmt.Println("No se pudo generar la carpeta. ", mkdirErr)
+			return
 		}
 		//fmt.Println("Check path. Should exist by now")
 	}
@@ -333,6 +339,13 @@ func existFolders(path string) bool {
 }
 
 func createExtendedPartition(file *os.File, mbr Mbr, partName [16]byte, size uint64, fit byte, typee byte) {
+	//checking if an extended alredy exists
+	for extendedIndex := 0; extendedIndex < 4; extendedIndex++ {
+		if mbr.Partitions[extendedIndex].Type == 'E' {
+			fmt.Println("Ya existe una particion extendida para este disco.")
+			return
+		}
+	}
 	//creates a new partition with the provided name, size and the worst adjustment
 	newPartition := Partition{}
 	newPartition.Name = partName
@@ -431,22 +444,22 @@ func createLogicPartition(file *os.File, mbr Mbr, partName [16]byte, fit byte, s
 	//ebr is updated with the data provided
 	actualEbr.Status = 'F'
 	actualEbr.Fit = fit
-	actualEbr.Size = size
+	actualEbr.Size = TotalEbrSize(size)
 	actualEbr.Next = -1
 	actualEbr.Name = partName
 	//actualEbr.Start is not defined yet since it's necessary to find its position
 	if len(ebrList) > 1 { //more than one ebr
 		for i := 0; i < len(ebrList); i++ { //looking through the ebrs to find the first fit
 			if ebrList[i].Next == -1 { //the next position is available (ebrList[i] is the last ebr)
-				if TotalEbrSize(actualEbr.Size) < (extended.Start+extended.Size)-(ebrList[i].Start+TotalEbrSize(ebrList[i].Size)) { //ebr size should be less than the free space (total partition space - occupied space by the last ebr)
-					actualEbr.Start = ebrList[i].Start + TotalEbrSize(ebrList[i].Size)
+				if actualEbr.Size < (extended.Start+extended.Size)-(ebrList[i].Start+(ebrList[i].Size)) { //ebr size should be less than the free space (total partition space - occupied space by the last ebr)
+					actualEbr.Start = ebrList[i].Start + (ebrList[i].Size)
 					ebrList[i].Next = int64(actualEbr.Start)
 					ebrList = append(ebrList, actualEbr)
 					break
 				}
 			} else if ebrList[i].Next >= 0 { //next position is occupied
-				if TotalEbrSize(actualEbr.Size) < (ebrList[i+1].Start+TotalEbrSize(ebrList[i+1].Size))-(ebrList[i].Start+TotalEbrSize(ebrList[i].Size)) { //checks if there is enough space to set the actualEbr in between another two ebrs
-					actualEbr.Start = TotalEbrSize(ebrList[i].Size) + ebrList[i].Start
+				if (actualEbr.Size) < (ebrList[i+1].Start)-(ebrList[i].Start+(ebrList[i].Size)) { //checks if there is enough space to set the actualEbr in between another two ebrs
+					actualEbr.Start = (ebrList[i].Size) + ebrList[i].Start
 					ebrList[i].Next = int64(actualEbr.Start)
 					actualEbr.Next = int64(ebrList[i+1].Start)
 					ebrList = append(ebrList, actualEbr)
@@ -460,7 +473,7 @@ func createLogicPartition(file *os.File, mbr Mbr, partName [16]byte, fit byte, s
 		}
 	} else if len(ebrList) == 1 { //first ebr
 		if ebrList[0].Status == 0 { //first ebr is empty
-			if TotalEbrSize(actualEbr.Size) < extended.Size { //ebr size should be less than extended partition total size
+			if (actualEbr.Size) < extended.Size { //ebr size should be less than extended partition total size
 				actualEbr.Start = extended.Start
 				ebrList[0] = actualEbr
 			} else {
@@ -468,9 +481,9 @@ func createLogicPartition(file *os.File, mbr Mbr, partName [16]byte, fit byte, s
 				return
 			}
 		} else { //First ebr is not empty
-			if TotalEbrSize(actualEbr.Size) < extended.Size-TotalEbrSize(ebrList[0].Size) { //ebr size should be less than extended partition free space
-				ebrList[0].Next = int64(ebrList[0].Start + TotalEbrSize(ebrList[0].Size))
-				actualEbr.Start = ebrList[0].Start + TotalEbrSize(ebrList[0].Size)
+			if (actualEbr.Size) < extended.Size-(ebrList[0].Size) { //ebr size should be less than extended partition free space
+				ebrList[0].Next = int64(ebrList[0].Start + (ebrList[0].Size))
+				actualEbr.Start = ebrList[0].Start + (ebrList[0].Size)
 				ebrList = append(ebrList, actualEbr)
 			} else {
 				fmt.Println("El tamano del nuevo ebr es mayor que el espacio disponible")
@@ -483,7 +496,7 @@ func createLogicPartition(file *os.File, mbr Mbr, partName [16]byte, fit byte, s
 	}
 	//logic partition created. ebrs are updated on the disk
 	for i := 0; i < len(ebrList); i++ {
-		println("Start:", int64(ebrList[i].Start))
+		//println("Start:", int64(ebrList[i].Start))
 		file.Seek(int64(ebrList[i].Start), 0)
 		var binario bytes.Buffer
 		binary.Write(&binario, binary.BigEndian, &ebrList[i])
@@ -542,7 +555,7 @@ func canCreatePartition(file *os.File) (Mbr, error) {
 	}
 	//checks if the mbr has available partitions
 	if mbr.Partitions[3].Start != 0 {
-		return mbr, errors.New("particiones ya definidas. no puede crear más")
+		return mbr, errors.New("Particiones ya definidas. No puede crear más")
 	}
 
 	return mbr, nil
@@ -642,8 +655,8 @@ func disk(idPartition string) string {
 		"<table align=\"center\" border=\"1\">\n" +
 		"<tr>\n" + //first row
 		"<td rowspan=\"2\">MBR</td>\n" //first cell
-	startPosition := mbr.Size //is where the last occupied space
-	var extendedRow string    //string where the logic partitions are represented
+	startPosition := uint64(MBRSIZE) //is where the last occupied space
+	var extendedRow string           //string where the logic partitions are represented
 	for i := 0; i < 4; i++ {
 		freeSpace := mbr.Partitions[i].Start - startPosition
 		if freeSpace > 0 {
@@ -690,10 +703,13 @@ func disk(idPartition string) string {
 					extendedRow += "<td>Libre</td>\n"
 					freeOnExtended++
 				}
-				array := mbr.Partitions[i].Name[:]
+				array := ebrList[j].Name[:]
 				n := bytes.IndexByte(array, 0)
-				extendedRow += "<td>EBR: " + string(mbr.Partitions[i].Name[:n]) + "</td>\n"
-				if ebrList[j].Next == -1 {
+				extendedRow += "<td>EBR: " + string(ebrList[j].Name[:n]) + "</td>\n"
+				if ebrList[j].Size > uint64(EBRSIZE) { //if ebrList[j] is bigger than an empty ebr size it contains a logic partition
+					extendedRow += "<td>Logica</td>\n"
+				}
+				if ebrList[j].Next == -1 && mbr.Partitions[i].Size-(ebrList[j].Start+ebrList[j].Size) > 0 { //last ebr
 					extendedRow += "<td>Libre</td>\n"
 					freeOnExtended++
 				}
@@ -702,7 +718,9 @@ func disk(idPartition string) string {
 			//cell on the first row
 			array := mbr.Partitions[i].Name[:]
 			n := bytes.IndexByte(array, 0)
-			dot += "<td colspan=\"" + strconv.Itoa(freeOnExtended+len(ebrList)) + "\">Extendida: " + string(mbr.Partitions[i].Name[:n]) + "</td>\n"
+			dot += "<td colspan=\"" + strconv.Itoa(freeOnExtended+2*len(ebrList)) + "\">Extendida: " + string(mbr.Partitions[i].Name[:n]) + "</td>\n"
+			startPosition = mbr.Partitions[i].Start + mbr.Partitions[i].Size
+			continue
 		}
 		startPosition += mbr.Partitions[i].Size
 	}
@@ -728,13 +746,13 @@ func generateDot(dotText string, path string) {
 	}
 	file.WriteString(dotText)
 	file.Close()
-	out, _ := exec.Command("dot", "-T"+extension, dotPath).CombinedOutput()
-	if out != nil {
+	out, _ := exec.Command("dot", "-T"+extension, dotPath, "-o", path).CombinedOutput()
+	if len(out) != 0 {
 		fmt.Println("Error al generar el archivo dot.", string(out))
 		return
 	}
 	out, _ = exec.Command("xdg-open", path).CombinedOutput()
-	if out != nil {
+	if len(out) != 0 {
 		fmt.Println("Error al abrir el archivo generado.", string(out))
 		return
 	}

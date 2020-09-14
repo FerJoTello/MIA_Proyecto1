@@ -33,6 +33,9 @@ type Ebr struct {
 //EBRSIZE total size of the Ebr
 var EBRSIZE = binary.Size(Ebr{})
 
+//MBRSIZE total size of the Mbr
+var MBRSIZE = binary.Size(Mbr{})
+
 //TotalEbrSize returns the totalSize of a ebr
 func TotalEbrSize(sizeOnBytes uint64) uint64 {
 	return uint64(EBRSIZE) + sizeOnBytes

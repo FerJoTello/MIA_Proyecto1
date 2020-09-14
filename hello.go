@@ -19,12 +19,12 @@ var controlIndex int          //the index of the actual token
 
 func main() {
 	DiskManager.MountedDisks = []DiskManager.MountedDisk{}
-	scanner := bufio.NewScanner(os.Stdin)
+	//scanner := bufio.NewScanner(os.Stdin)
 	var command string
 	for command != "fin" {
-		fmt.Print("Ingresa un comando:\n")
-		scanner.Scan()
-		command = "exec -pAth->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/pruebas/Comandos.mia\"" //scanner.Text()
+		fmt.Println("Ingresa un comando :p")
+		//scanner.Scan()
+		command = "exec -pAth->\"/home/fernando/Documentos/2020 2do Semestre/Archivos/Proyecto1/Pruebas/Pruebas.mia\"" //scanner.Text() exec -pAth->\"/home/fernando/Descargas/Entrada1.mia\"
 		tokens = Lexical.Analyze(command)
 		//is necessary to check if the tokens correspond to a command
 		checkCommands()
@@ -60,6 +60,9 @@ func checkCommands() {
 		} else if compareActualToken(Lexical.ResMkfs) {
 			nextToken()
 			mkfs()
+		} else if compareActualToken(Lexical.ResPause) {
+			nextToken()
+			pause()
 		} else if compareActualToken(Lexical.ResRep) {
 			nextToken()
 			rep()
@@ -79,7 +82,7 @@ func rep() {
 		if compareActualToken(Lexical.SMinus) {
 			//should be a parameter
 			nextToken()
-			if compareActualToken(Lexical.ResNombre) {
+			if compareActualToken(Lexical.ResNombre) || compareActualToken(Lexical.ResName) {
 				nextToken()
 				nombre = getID()
 			} else if compareActualToken(Lexical.ResPath) {
@@ -187,7 +190,7 @@ func fdisk() {
 				name = getID()
 			} else if compareActualToken(Lexical.ResUnit) {
 				nextToken()
-				unit = getID()
+				unit = strings.ToLower(getID())
 			} else if compareActualToken(Lexical.ResType) {
 				nextToken()
 				typee = getID()

@@ -20,6 +20,7 @@ const (
 	NewLine      TokenType = "new_line"
 	SMinus       TokenType = "minus"
 	SArrow       TokenType = "arrow"
+	Comment      TokenType = "comentary"
 	ResID        TokenType = "reserved_id"
 	ResExec      TokenType = "reserved_exec"
 	ResPath      TokenType = "reserved_path"
@@ -59,7 +60,7 @@ var tokenList []Token
 //Analyze does a lexical analysis returning the identified tokens from a string
 func Analyze(command string) []Token {
 	tokenList = nil
-	command = command + "#"
+	command = command + "$"
 	state = 0
 	for i := 0; i < len(command); i++ {
 		c := string(command[i]) //c is the character at index "i" from the original command
@@ -86,8 +87,11 @@ func Analyze(command string) []Token {
 			} else if getBoolMatch("[\\d]", c) {
 				state = 9
 				auxlex += c
+			} else if getBoolMatch("#", c) {
+				state = 11
+				auxlex += c
 			} else {
-				if getBoolMatch("#", c) && i == len(command)-1 {
+				if getBoolMatch("$", c) && i == len(command)-1 {
 					//fmt.Println("Analisis terminado")
 					auxlex += "\n"
 					addToken(NewLine)
@@ -241,6 +245,12 @@ func Analyze(command string) []Token {
 				i--
 			}
 			break
+		case 11:
+			if getBoolMatch("\n", c) {
+				addToken(Comment)
+			} else {
+				auxlex += c
+			}
 		}
 	}
 	//printTokens()
